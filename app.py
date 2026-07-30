@@ -38,26 +38,40 @@ def get_service_account_info():
     service_account_info = get_setting("gcp_service_account")
     if not service_account_info:
         return None
+
     if isinstance(service_account_info, str):
         try:
-            return json.loads(service_account_info)
+            credentials_info = json.loads(service_account_info)
         except json.JSONDecodeError:
             return None
-    if isinstance(service_account_info, dict):
-        return service_account_info
-    return None
+    elif isinstance(service_account_info, dict):
+        credentials_info = dict(service_account_info)
+    else:
+        return None
+
+    if "private_key" in credentials_info and isinstance(credentials_info["private_key"], str):
+        credentials_info["private_key"] = credentials_info["private_key"].replace("\\n", "\n")
+
+    return credentials_info
 
 
 def get_gsheet_client():
     service_account_info = get_service_account_info()
     if not service_account_info:
-        return None
+        return None, "Google service account information is missing or malformed."
 
-    credentials = Credentials.from_service_account_info(
-        service_account_info,
-        scopes=["https://www.googleapis.com/auth/spreadsheets"],
-    )
-    return gspread.authorize(credentials)
+    try:
+        credentials = Credentials.from_service_account_info(
+            service_account_info,
+            scopes=[
+                "https://www.googleapis.com/auth/spreadsheets",
+                "https://www.googleapis.com/auth/drive",
+            ],
+        )
+        client = gspread.authorize(credentials)
+        return client, ""
+    except Exception as e:
+        return None, str(e)
 
 
 def append_feedback_to_sheet(input_word: str, predicted_stem: str, feedback: str) -> tuple:
@@ -68,11 +82,11 @@ def append_feedback_to_sheet(input_word: str, predicted_stem: str, feedback: str
     diagnostics.append(f"Using google_sheet_id from st.secrets: {bool(sheet_id)}")
     diagnostics.append(f"Using google_sheet_name from st.secrets: {sheet_name}")
 
-    client = get_gsheet_client()
+    client, client_error = get_gsheet_client()
     if not client:
         diagnostics.append("Credentials loaded: false")
-        diagnostics.append("Error: Google service account credentials are not configured correctly.")
-        return False, "Feedback could not be saved. Please try again.", diagnostics
+        diagnostics.append(f"Credentials error: {client_error}")
+        return False, client_error or "Feedback could not be saved. Please try again.", diagnostics
 
     diagnostics.append("Credentials loaded: true")
 
