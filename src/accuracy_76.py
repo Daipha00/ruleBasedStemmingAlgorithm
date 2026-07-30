@@ -17,7 +17,9 @@ def safe_sub(pattern, repl, word, min_len=3):
     return word
 
 
-
+# ============================================================
+# MAIN STEMMER
+# ============================================================
 
 def stem(word):
     original = word.lower().strip().split()[0]
@@ -37,21 +39,31 @@ def stem(word):
     word = strip_object_markers(word)
     debug_print("object markers", word)
 
-    
+    # Keep word before suffix processing
     before_suffix = word
 
     word = strip_derivational_suffixes(word)
     debug_print("derivational suffixes", word)
 
-   
+    # If derivational processing already removed the final -a
+    # from an -ia form, preserve the resulting -i.
+    # Prevent double stripping after derivational processing
     if (
-      (before_suffix.endswith("ia") and word.endswith("i"))
-      or
-      (before_suffix.endswith("ea") and word.endswith("e"))
-    ):
-      final_word = word
+    (
+        before_suffix.endswith("ia")
+        and not before_suffix.endswith("ilia")
+        and word.endswith("i")
+    )
+    or
+    (
+        before_suffix.endswith("ea")
+        and word.endswith("e")
+    )
+):
+        final_word = word
+
     else:
-      final_word = strip_final_vowel(word)
+        final_word = strip_final_vowel(word)
 
     word = final_word
 
@@ -92,6 +104,10 @@ def stem(word):
     return word
 
 
+# ============================================================
+# STEMMER WITH TRACE
+# ============================================================
+
 def stem_with_trace(word):
 
     trace = {}
@@ -120,6 +136,10 @@ def stem_with_trace(word):
 
     return trace
 
+
+# ============================================================
+# COMPOUND PREFIXES
+# ============================================================
 
 def strip_compound_prefixes(word):
 
@@ -206,6 +226,10 @@ def strip_compound_prefixes(word):
     return word
 
 
+# ============================================================
+# SIMPLE PREFIXES
+# ============================================================
+
 def strip_simple_prefixes(word):
 
     patterns = [
@@ -251,6 +275,10 @@ def strip_simple_prefixes(word):
     return word
 
 
+# ============================================================
+# TENSE MARKERS
+# ============================================================
+
 def strip_tense_markers(word):
 
     word = safe_sub(
@@ -271,7 +299,7 @@ def strip_tense_markers(word):
         word
     )
 
-   
+    # Past tense marker -li-
     temp = re.sub(
         r'^li(?=[aeiou])',
         '',
@@ -281,13 +309,14 @@ def strip_tense_markers(word):
     if len(temp) >= 3:
         word = temp
 
-    
+    # Present tense marker -na-
     word = safe_sub(
         r'^na(?=.{3,})',
         '',
         word
     )
 
+    # Future tense marker -ta-
     temp = re.sub(
         r'^ta(?=[aeiou].{2,})',
         '',
@@ -339,6 +368,10 @@ def strip_tense_markers(word):
     return word
 
 
+# ============================================================
+# OBJECT MARKERS
+# ============================================================
+
 def strip_object_markers(word):
 
     word = safe_sub(
@@ -355,41 +388,66 @@ def strip_object_markers(word):
 
     return word
 
+
+# ============================================================
+# DERIVATIONAL SUFFIXES
+# ============================================================
+
 def strip_derivational_suffixes(word):
 
-
+    # Passive suffix
     if len(word) > 4 and re.search(r'[^aeio]wa$', word):
         result = re.sub(r'wa$', '', word)
         if len(result) >= 3:
             return result
 
+    # Applicative extension -ilia
+# ROOT + ilia -> ROOT
+    if len(word) > 6 and re.search(r'ilia$', word):
+
+      result = re.sub(
+        r'ilia$',
+        '',
+        word
+    )
+
+    if len(result) >= 4:
+        return result
+
+    # Applicative -ia
     if re.search(r'ia$', word):
         result = word[:-1]
         if len(result) >= 3:
             return result
 
+    # Applicative -ea
     if re.search(r'ea$', word):
         result = word[:-1]
         if len(result) >= 3:
             return result
 
+    # Preserve -ika
     if re.search(r'ika$', word):
         result = word[:-1]
         if len(result) >= 3:
             return result
 
+    # Preserve -eka
     if re.search(r'eka$', word):
         result = word[:-1]
         if len(result) >= 3:
             return result
 
+    # Preserve -isha / -esha
     if re.search(r'(isha|esha)$', word):
         return word[:-1]
 
+   # Reciprocal extension -an-
+   # Remove -ana when a sufficiently long verbal base remains
     if re.search(r'ana$', word):
       return word[:-1]
 
-   
+    # Preserve -anisha / -anesha
     if re.search(r'(anisha|anesha)$', word):
         return word[:-1]
 
