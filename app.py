@@ -36,8 +36,15 @@ def get_setting(key: str, default=None):
 
 def get_service_account_info():
     service_account_info = get_setting("gcp_service_account")
+    top_level_keys = []
+    if hasattr(st, "secrets"):
+        try:
+            top_level_keys = list(st.secrets.keys())
+        except Exception:
+            top_level_keys = []
+
     if not service_account_info:
-        return None, []
+        return None, top_level_keys, []
 
     if isinstance(service_account_info, dict):
         credentials_info = dict(service_account_info)
@@ -45,20 +52,20 @@ def get_service_account_info():
         try:
             credentials_info = json.loads(service_account_info)
         except json.JSONDecodeError:
-            return None, []
+            return None, top_level_keys, []
     else:
-        return None, []
+        return None, top_level_keys, []
 
     if "private_key" in credentials_info and isinstance(credentials_info["private_key"], str):
         credentials_info["private_key"] = credentials_info["private_key"].replace("\\n", "\n")
 
-    return credentials_info, list(credentials_info.keys())
+    return credentials_info, top_level_keys, list(credentials_info.keys())
 
 
 def get_gsheet_client():
-    service_account_info, service_account_keys = get_service_account_info()
+    service_account_info, top_level_keys, service_account_keys = get_service_account_info()
     if not service_account_info:
-        return None, "Google service account information is missing or malformed.", service_account_keys, []
+        return None, "Google service account information is missing or malformed.", top_level_keys, service_account_keys, []
 
     required = [
         "type",
@@ -98,7 +105,8 @@ def append_feedback_to_sheet(input_word: str, predicted_stem: str, feedback: str
     diagnostics.append(f"Using google_sheet_id from st.secrets: {bool(sheet_id)}")
     diagnostics.append(f"Using google_sheet_name from st.secrets: {sheet_name}")
 
-    client, client_error, service_account_keys, missing_fields = get_gsheet_client()
+    client, client_error, top_level_keys, service_account_keys, missing_fields = get_gsheet_client()
+    diagnostics.append(f"st.secrets keys: {top_level_keys}")
     diagnostics.append(f"gcp_service_account keys: {service_account_keys}")
     if missing_fields:
         diagnostics.append(f"Missing required fields: {missing_fields}")
