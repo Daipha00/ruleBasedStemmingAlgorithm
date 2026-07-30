@@ -52,54 +52,52 @@ def get_gsheet_client():
     service_account_info = get_service_account_info()
     if not service_account_info:
         return None
-    try:
-        logging.info("Google service account info present: %s", bool(service_account_info))
-        credentials = Credentials.from_service_account_info(
-            service_account_info,
-            scopes=["https://www.googleapis.com/auth/spreadsheets"],
-        )
-        client = gspread.authorize(credentials)
-        logging.info("gspread client created successfully")
-        return client
-    except Exception as e:
-        logging.error("Failed to create gspread client: %s", e)
-        logging.error(traceback.format_exc())
-        return None
+
+    credentials = Credentials.from_service_account_info(
+        service_account_info,
+        scopes=["https://www.googleapis.com/auth/spreadsheets"],
+    )
+    return gspread.authorize(credentials)
 
 
-def append_feedback_to_sheet(input_word: str, predicted_stem: str, feedback: str) -> (bool, str):
+def append_feedback_to_sheet(input_word: str, predicted_stem: str, feedback: str) -> tuple:
+    diagnostics = []
     sheet_id = get_setting("google_sheet_id") or get_setting("GOOGLE_SHEET_ID")
     sheet_name = get_setting("google_sheet_name") or get_setting("GOOGLE_SHEET_NAME") or "Feedback"
 
-    logging.info("append_feedback_to_sheet: sheet_id=%s, sheet_name=%s", sheet_id, sheet_name)
+    diagnostics.append(f"Using google_sheet_id from st.secrets: {bool(sheet_id)}")
+    diagnostics.append(f"Using google_sheet_name from st.secrets: {sheet_name}")
 
     client = get_gsheet_client()
     if not client:
-        logging.error("append_feedback_to_sheet: gspread client is None (credentials missing or invalid)")
-        return False, "Feedback could not be saved. Please try again."
+        diagnostics.append("Credentials loaded: false")
+        diagnostics.append("Error: Google service account credentials are not configured correctly.")
+        return False, "Feedback could not be saved. Please try again.", diagnostics
+
+    diagnostics.append("Credentials loaded: true")
 
     try:
-        logging.info("Opening spreadsheet by key")
+        diagnostics.append("Opening spreadsheet by key")
         spreadsheet = client.open_by_key(sheet_id)
-        logging.info("Spreadsheet opened successfully: %s", getattr(spreadsheet, 'title', sheet_id))
+        diagnostics.append(f"Spreadsheet opened: {getattr(spreadsheet, 'title', sheet_id)}")
 
-        logging.info("Opening worksheet: %s", sheet_name)
+        diagnostics.append(f"Opening worksheet: {sheet_name}")
         try:
             worksheet = spreadsheet.worksheet(sheet_name)
-            logging.info("Worksheet opened successfully: %s", sheet_name)
+            diagnostics.append(f"Worksheet opened: {sheet_name}")
         except gspread.WorksheetNotFound:
-            logging.error("Worksheet '%s' not found", sheet_name)
-            return False, "Feedback could not be saved. Please try again."
+            diagnostics.append(f"Worksheet '{sheet_name}' not found")
+            return False, "Feedback could not be saved. Please try again.", diagnostics
 
         row = [datetime.now().strftime("%Y-%m-%d %H:%M:%S"), input_word, predicted_stem, feedback]
-        logging.info("Appending row to worksheet: %s", row)
+        diagnostics.append(f"Attempting to append row: {row}")
         worksheet.append_row(row, value_input_option="USER_ENTERED")
-        logging.info("append_row succeeded")
-        return True, ""
+        diagnostics.append("Row appended successfully")
+        return True, "", diagnostics
     except Exception as e:
-        logging.error("Exception while appending to Google Sheets: %s", e)
-        logging.error(traceback.format_exc())
-        return False, "Feedback could not be saved. Please try again."
+        diagnostics.append(f"Exception while appending to Google Sheets: {str(e)}")
+        diagnostics.append(traceback.format_exc())
+        return False, traceback.format_exc(), diagnostics
 
 
 def initialize_session_state() -> None:
@@ -109,6 +107,7 @@ def initialize_session_state() -> None:
         "feedback_pending": False,
         "feedback_given": False,
         "sheet_error": "",
+        "sheet_diagnostics": [],
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -117,13 +116,16 @@ def initialize_session_state() -> None:
 
 def submit_feedback(feedback_value: str) -> None:
     if st.session_state.feedback_pending and not st.session_state.feedback_given:
-        success, error_message = append_feedback_to_sheet(
+        success, error_message, diagnostics = append_feedback_to_sheet(
             st.session_state.input_word,
             st.session_state.predicted_stem,
             feedback_value,
         )
+        st.session_state.sheet_diagnostics = diagnostics
         if not success:
             st.session_state.sheet_error = error_message
+            st.session_state.feedback_given = False
+            st.session_state.feedback_pending = True
             return
 
         st.session_state.feedback_given = True
@@ -161,6 +163,11 @@ if st.session_state.predicted_stem:
             submit_feedback("True")
         if col2.button("False", key="feedback_false"):
             submit_feedback("False")
+
+    if st.session_state.sheet_diagnostics:
+        st.markdown("**Google Sheets diagnostics**")
+        for line in st.session_state.sheet_diagnostics:
+            st.text(line)
 
     if st.session_state.sheet_error:
         st.error(st.session_state.sheet_error)
