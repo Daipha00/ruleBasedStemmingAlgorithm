@@ -1,37 +1,105 @@
-﻿import csv
-import os
+﻿import os
 import sys
+import json
 from datetime import datetime
-from pathlib import Path
 
 import streamlit as st
+import gspread
+from google.oauth2.service_account import Credentials
+import logging
+import traceback
+
+# configure server-side logging
+logging.basicConfig(level=logging.INFO)
 
 # Ensure the existing stemming code can be imported from src/
-ROOT_DIR = Path(__file__).resolve().parent
-SRC_DIR = ROOT_DIR / "src"
-if str(SRC_DIR) not in sys.path:
-    sys.path.insert(0, str(SRC_DIR))
+ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
+SRC_DIR = os.path.join(ROOT_DIR, "src")
+if SRC_DIR not in sys.path:
+    sys.path.insert(0, SRC_DIR)
 
 from stemmer import stem
 
-FEEDBACK_FILE = ROOT_DIR / "feedback.csv"
 FEEDBACK_FIELDS = ["timestamp", "input_word", "predicted_stem", "feedback"]
 
 
-def append_feedback(input_word: str, predicted_stem: str, feedback: str) -> None:
-    is_new_file = not FEEDBACK_FILE.exists()
-    with FEEDBACK_FILE.open("a", newline="", encoding="utf-8") as csvfile:
-        writer = csv.DictWriter(csvfile, fieldnames=FEEDBACK_FIELDS)
-        if is_new_file:
-            writer.writeheader()
-        writer.writerow(
-            {
-                "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                "input_word": input_word,
-                "predicted_stem": predicted_stem,
-                "feedback": feedback,
-            }
+def get_setting(key: str, default=None):
+    if key in os.environ:
+        return os.environ[key]
+    if hasattr(st, "secrets"):
+        if key in st.secrets:
+            return st.secrets[key]
+        if key.lower() in st.secrets:
+            return st.secrets[key.lower()]
+    return default
+
+
+def get_service_account_info():
+    service_account_info = get_setting("gcp_service_account")
+    if not service_account_info:
+        return None
+    if isinstance(service_account_info, str):
+        try:
+            return json.loads(service_account_info)
+        except json.JSONDecodeError:
+            return None
+    if isinstance(service_account_info, dict):
+        return service_account_info
+    return None
+
+
+def get_gsheet_client():
+    service_account_info = get_service_account_info()
+    if not service_account_info:
+        return None
+    try:
+        logging.info("Google service account info present: %s", bool(service_account_info))
+        credentials = Credentials.from_service_account_info(
+            service_account_info,
+            scopes=["https://www.googleapis.com/auth/spreadsheets"],
         )
+        client = gspread.authorize(credentials)
+        logging.info("gspread client created successfully")
+        return client
+    except Exception as e:
+        logging.error("Failed to create gspread client: %s", e)
+        logging.error(traceback.format_exc())
+        return None
+
+
+def append_feedback_to_sheet(input_word: str, predicted_stem: str, feedback: str) -> (bool, str):
+    sheet_id = get_setting("google_sheet_id") or get_setting("GOOGLE_SHEET_ID")
+    sheet_name = get_setting("google_sheet_name") or get_setting("GOOGLE_SHEET_NAME") or "Feedback"
+
+    logging.info("append_feedback_to_sheet: sheet_id=%s, sheet_name=%s", sheet_id, sheet_name)
+
+    client = get_gsheet_client()
+    if not client:
+        logging.error("append_feedback_to_sheet: gspread client is None (credentials missing or invalid)")
+        return False, "Feedback could not be saved. Please try again."
+
+    try:
+        logging.info("Opening spreadsheet by key")
+        spreadsheet = client.open_by_key(sheet_id)
+        logging.info("Spreadsheet opened successfully: %s", getattr(spreadsheet, 'title', sheet_id))
+
+        logging.info("Opening worksheet: %s", sheet_name)
+        try:
+            worksheet = spreadsheet.worksheet(sheet_name)
+            logging.info("Worksheet opened successfully: %s", sheet_name)
+        except gspread.WorksheetNotFound:
+            logging.error("Worksheet '%s' not found", sheet_name)
+            return False, "Feedback could not be saved. Please try again."
+
+        row = [datetime.now().strftime("%Y-%m-%d %H:%M:%S"), input_word, predicted_stem, feedback]
+        logging.info("Appending row to worksheet: %s", row)
+        worksheet.append_row(row, value_input_option="USER_ENTERED")
+        logging.info("append_row succeeded")
+        return True, ""
+    except Exception as e:
+        logging.error("Exception while appending to Google Sheets: %s", e)
+        logging.error(traceback.format_exc())
+        return False, "Feedback could not be saved. Please try again."
 
 
 def initialize_session_state() -> None:
@@ -40,6 +108,7 @@ def initialize_session_state() -> None:
         "predicted_stem": "",
         "feedback_pending": False,
         "feedback_given": False,
+        "sheet_error": "",
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -48,13 +117,18 @@ def initialize_session_state() -> None:
 
 def submit_feedback(feedback_value: str) -> None:
     if st.session_state.feedback_pending and not st.session_state.feedback_given:
-        append_feedback(
+        success, error_message = append_feedback_to_sheet(
             st.session_state.input_word,
             st.session_state.predicted_stem,
             feedback_value,
         )
+        if not success:
+            st.session_state.sheet_error = error_message
+            return
+
         st.session_state.feedback_given = True
         st.session_state.feedback_pending = False
+        st.session_state.sheet_error = ""
 
 
 initialize_session_state()
@@ -87,6 +161,9 @@ if st.session_state.predicted_stem:
             submit_feedback("True")
         if col2.button("False", key="feedback_false"):
             submit_feedback("False")
+
+    if st.session_state.sheet_error:
+        st.error(st.session_state.sheet_error)
 
     if st.session_state.feedback_given:
         st.success("Thank you. Your feedback has been recorded.")
