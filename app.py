@@ -37,28 +37,44 @@ def get_setting(key: str, default=None):
 def get_service_account_info():
     service_account_info = get_setting("gcp_service_account")
     if not service_account_info:
-        return None
+        return None, []
 
-    if isinstance(service_account_info, str):
+    if isinstance(service_account_info, dict):
+        credentials_info = dict(service_account_info)
+    elif isinstance(service_account_info, str):
         try:
             credentials_info = json.loads(service_account_info)
         except json.JSONDecodeError:
-            return None
-    elif isinstance(service_account_info, dict):
-        credentials_info = dict(service_account_info)
+            return None, []
     else:
-        return None
+        return None, []
 
     if "private_key" in credentials_info and isinstance(credentials_info["private_key"], str):
         credentials_info["private_key"] = credentials_info["private_key"].replace("\\n", "\n")
 
-    return credentials_info
+    return credentials_info, list(credentials_info.keys())
 
 
 def get_gsheet_client():
-    service_account_info = get_service_account_info()
+    service_account_info, service_account_keys = get_service_account_info()
     if not service_account_info:
-        return None, "Google service account information is missing or malformed."
+        return None, "Google service account information is missing or malformed.", service_account_keys, []
+
+    required = [
+        "type",
+        "project_id",
+        "private_key_id",
+        "private_key",
+        "client_email",
+        "client_id",
+        "auth_uri",
+        "token_uri",
+        "auth_provider_x509_cert_url",
+        "client_x509_cert_url",
+    ]
+    missing_fields = [field for field in required if field not in service_account_info]
+    if missing_fields:
+        return None, "Service account secret is missing required fields.", service_account_keys, missing_fields
 
     try:
         credentials = Credentials.from_service_account_info(
@@ -69,9 +85,9 @@ def get_gsheet_client():
             ],
         )
         client = gspread.authorize(credentials)
-        return client, ""
+        return client, "", service_account_keys, []
     except Exception as e:
-        return None, str(e)
+        return None, f"{type(e).__name__}: {str(e)}", service_account_keys, []
 
 
 def append_feedback_to_sheet(input_word: str, predicted_stem: str, feedback: str) -> tuple:
@@ -82,7 +98,11 @@ def append_feedback_to_sheet(input_word: str, predicted_stem: str, feedback: str
     diagnostics.append(f"Using google_sheet_id from st.secrets: {bool(sheet_id)}")
     diagnostics.append(f"Using google_sheet_name from st.secrets: {sheet_name}")
 
-    client, client_error = get_gsheet_client()
+    client, client_error, service_account_keys, missing_fields = get_gsheet_client()
+    diagnostics.append(f"gcp_service_account keys: {service_account_keys}")
+    if missing_fields:
+        diagnostics.append(f"Missing required fields: {missing_fields}")
+
     if not client:
         diagnostics.append("Credentials loaded: false")
         diagnostics.append(f"Credentials error: {client_error}")
