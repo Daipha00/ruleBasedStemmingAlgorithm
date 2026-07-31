@@ -168,7 +168,7 @@ def append_feedback_to_sheet(input_word: str, predicted_stem: str, feedback: str
         diagnostics.append(f"Attempting to append row: {row}")
         worksheet.append_row(row, value_input_option="USER_ENTERED")
         diagnostics.append("Row appended successfully")
-        return True, "", diagnostics
+        return True, "", []
     except Exception as e:
         diagnostics.append(f"Exception while appending to Google Sheets: {str(e)}")
         diagnostics.append(traceback.format_exc())
