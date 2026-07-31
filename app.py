@@ -16,6 +16,7 @@ import traceback
 
 st.set_page_config(
     page_title="Swahili Verb Stemmer",
+    page_icon="",
     layout="centered",
     initial_sidebar_state="collapsed",
 )
@@ -107,6 +108,7 @@ def get_service_account_info():
 
         return credentials_info
 
+    # Fallback for nested secrets
     if (
         hasattr(st, "secrets")
         and "gcp_service_account" in st.secrets
@@ -143,6 +145,7 @@ def get_service_account_info():
                 str,
             )
         ):
+
             credentials_info["private_key"] = (
                 credentials_info["private_key"]
                 .replace("\\n", "\n")
@@ -165,8 +168,7 @@ def get_gsheet_client():
 
         return (
             None,
-            "Google service account information "
-            "is missing or malformed.",
+            "Google service account information is missing."
         )
 
     required = [
@@ -192,8 +194,7 @@ def get_gsheet_client():
 
         return (
             None,
-            "Service account configuration "
-            "is incomplete.",
+            "Service account configuration is incomplete."
         )
 
     try:
@@ -213,18 +214,18 @@ def get_gsheet_client():
     except Exception as e:
 
         logging.error(
-            "Credentials error: %s",
-            str(e),
+            "Google credentials error: %s",
+            str(e)
         )
 
         return (
             None,
-            f"{type(e).__name__}: {str(e)}",
+            f"{type(e).__name__}: {str(e)}"
         )
 
 
 # =========================================================
-# SAVE FEEDBACK
+# SAVE FEEDBACK TO GOOGLE SHEET
 # =========================================================
 
 def append_feedback_to_sheet(
@@ -257,9 +258,7 @@ def append_feedback_to_sheet(
 
     try:
 
-        spreadsheet = client.open_by_key(
-            sheet_id
-        )
+        spreadsheet = client.open_by_key(sheet_id)
 
         worksheet = spreadsheet.worksheet(
             sheet_name
@@ -303,6 +302,7 @@ def initialize_session_state():
         "feedback_pending": False,
         "feedback_given": False,
         "sheet_error": False,
+        "words_tested": 0,
     }
 
     for key, value in defaults.items():
@@ -312,7 +312,7 @@ def initialize_session_state():
 
 
 # =========================================================
-# FEEDBACK
+# FEEDBACK HANDLER
 # =========================================================
 
 def submit_feedback(feedback_value: str):
@@ -333,6 +333,8 @@ def submit_feedback(feedback_value: str):
             st.session_state.sheet_error = True
             return
 
+        st.session_state.words_tested += 1
+
         st.session_state.feedback_given = True
         st.session_state.feedback_pending = False
         st.session_state.sheet_error = False
@@ -346,105 +348,51 @@ initialize_session_state()
 
 
 # =========================================================
-# SIMPLE PROFESSIONAL DESIGN
+# SIMPLE PROFESSIONAL STYLE
 # =========================================================
 
 st.markdown(
     """
 <style>
 
-/* Background */
 .stApp {
-    background: #0e1117;
+    background-color: #0e1117;
 }
 
-
-/* Reduce overall content width */
+/* Keep page narrower */
 .block-container {
-    max-width: 720px;
-    padding-top: 3rem;
+    max-width: 700px;
+    padding-top: 2.5rem;
     padding-bottom: 4rem;
 }
 
-
-/* Title */
-.main-title {
-    font-size: 2.7rem;
-    font-weight: 750;
-    margin-bottom: 2rem;
-    letter-spacing: -0.5px;
+/* Input width */
+[data-testid="stTextInput"] {
+    max-width: 560px;
 }
 
-
-/* Input area */
-.input-card {
-    max-width: 620px;
+/* Form submit button */
+[data-testid="stFormSubmitButton"] {
+    max-width: 190px;
 }
-
-
-/* Text input */
-.stTextInput {
-    max-width: 620px;
-}
-
-.stTextInput input {
-    min-height: 50px;
-    border-radius: 10px;
-    font-size: 1rem;
-}
-
-
-/* Main stem button */
-.stFormSubmitButton {
-    max-width: 200px;
-}
-
-.stFormSubmitButton > button {
-    min-height: 48px;
-    border-radius: 10px;
-    font-weight: 600;
-}
-
-
-/* Prediction box */
-.prediction-card {
-    margin-top: 30px;
-    padding: 24px;
-    border-radius: 14px;
-    border: 1px solid rgba(255,255,255,0.12);
-    background: rgba(255,255,255,0.035);
-}
-
-.prediction-title {
-    font-size: 0.9rem;
-    opacity: 0.65;
-    margin-bottom: 8px;
-}
-
-.predicted-stem {
-    font-size: 2rem;
-    font-weight: 700;
-}
-
-
-/* Feedback question */
-.feedback-question {
-    margin-top: 25px;
-    margin-bottom: 15px;
-    font-size: 1rem;
-    font-weight: 500;
-}
-
 
 /* Buttons */
-.stButton > button {
-    min-height: 48px;
+.stButton > button,
+.stFormSubmitButton > button {
     border-radius: 10px;
+    min-height: 46px;
     font-weight: 600;
 }
 
+/* Counter */
+[data-testid="stMetric"] {
+    background-color: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.10);
+    padding: 12px 18px;
+    border-radius: 12px;
+}
 
-/* Remove unnecessary Streamlit elements */
+/* Remove default menu/footer */
 #MainMenu {
     visibility: hidden;
 }
@@ -463,14 +411,30 @@ footer {
 # TITLE
 # =========================================================
 
-st.markdown(
-    '<div class="main-title">Swahili Verb Stemmer</div>',
-    unsafe_allow_html=True,
-)
+st.title("Swahili Verb Stemmer")
 
 
 # =========================================================
-# INPUT
+# WORDS TESTED
+# =========================================================
+
+counter_col, empty_col = st.columns(
+    [1.3, 3]
+)
+
+with counter_col:
+
+    st.metric(
+        label="Words Tested",
+        value=st.session_state.words_tested,
+    )
+
+
+st.write("")
+
+
+# =========================================================
+# INPUT FORM
 # =========================================================
 
 with st.form(
@@ -498,9 +462,7 @@ with st.form(
 
         if input_word:
 
-            st.session_state.input_word = (
-                input_word
-            )
+            st.session_state.input_word = input_word
 
             st.session_state.predicted_stem = (
                 stem(input_word)
@@ -523,26 +485,17 @@ with st.form(
 
 if st.session_state.predicted_stem:
 
+    st.write("")
+
+    st.subheader("Predicted stem")
+
     st.markdown(
-        f"""
-        <div class="prediction-card">
-
-            <div class="prediction-title">
-                Predicted stem
-            </div>
-
-            <div class="predicted-stem">
-                {st.session_state.predicted_stem}
-            </div>
-
-        </div>
-        """,
-        unsafe_allow_html=True,
+        f"## {st.session_state.predicted_stem}"
     )
 
 
 # =========================================================
-# TRUE / FALSE
+# FEEDBACK
 # =========================================================
 
 if (
@@ -551,20 +504,15 @@ if (
     and not st.session_state.feedback_given
 ):
 
-    st.markdown(
-        """
-        <div class="feedback-question">
-            Is this stem correct?
-        </div>
-        """,
-        unsafe_allow_html=True,
+    st.write(
+        "Is this stem correct?"
     )
 
-    col1, col2, col3 = st.columns(
+    col_true, col_false, spacer = st.columns(
         [1, 1, 2]
     )
 
-    with col1:
+    with col_true:
 
         if st.button(
             "True",
@@ -573,10 +521,11 @@ if (
         ):
 
             submit_feedback("True")
+
             st.rerun()
 
 
-    with col2:
+    with col_false:
 
         if st.button(
             "False",
@@ -585,11 +534,12 @@ if (
         ):
 
             submit_feedback("False")
+
             st.rerun()
 
 
 # =========================================================
-# AFTER FEEDBACK
+# FEEDBACK CONFIRMATION
 # =========================================================
 
 if st.session_state.feedback_given:
@@ -597,6 +547,11 @@ if st.session_state.feedback_given:
     st.success(
         "Thank you. Your feedback has been recorded."
     )
+
+    # Celebration animation
+    st.balloons()
+
+    st.write("")
 
     if st.button(
         "Test Another Verb",
@@ -619,6 +574,5 @@ if st.session_state.feedback_given:
 if st.session_state.sheet_error:
 
     st.error(
-        "Feedback could not be saved. "
-        "Please try again."
+        "Feedback could not be saved. Please try again."
     )
