@@ -1,7 +1,6 @@
 ﻿import os
 import sys
 import json
-import random
 from datetime import datetime
 
 import streamlit as st
@@ -16,8 +15,7 @@ import traceback
 # =========================================================
 
 st.set_page_config(
-    page_title="Swahili Stem Challenge",
-    page_icon="🌿",
+    page_title="Swahili Verb Stemmer",
     layout="centered",
     initial_sidebar_state="collapsed",
 )
@@ -41,14 +39,6 @@ if SRC_DIR not in sys.path:
     sys.path.insert(0, SRC_DIR)
 
 from stemmer import stem
-
-
-FEEDBACK_FIELDS = [
-    "timestamp",
-    "input_word",
-    "predicted_stem",
-    "feedback",
-]
 
 
 # =========================================================
@@ -76,14 +66,6 @@ def get_setting(key: str, default=None):
 # =========================================================
 
 def get_service_account_info():
-
-    top_level_keys = []
-
-    if hasattr(st, "secrets"):
-        try:
-            top_level_keys = list(st.secrets.keys())
-        except Exception:
-            top_level_keys = []
 
     field_mapping = {
         "type": "gcp_type",
@@ -115,7 +97,6 @@ def get_service_account_info():
         for secret_name in field_mapping.values()
     )
 
-    # Preferred approach: top-level Streamlit secrets
     if top_level_credential_present:
 
         if credentials_info["private_key"] is not None:
@@ -124,20 +105,8 @@ def get_service_account_info():
                 .replace("\\n", "\n")
             )
 
-        service_account_keys = [
-            field
-            for field, value in credentials_info.items()
-            if field != "universe_domain"
-            and value is not None
-        ]
+        return credentials_info
 
-        return (
-            credentials_info,
-            top_level_keys,
-            service_account_keys,
-        )
-
-    # Fallback for nested gcp_service_account secrets
     if (
         hasattr(st, "secrets")
         and "gcp_service_account" in st.secrets
@@ -155,7 +124,7 @@ def get_service_account_info():
                 )
 
             except json.JSONDecodeError:
-                return None, top_level_keys, []
+                return None
 
         else:
 
@@ -165,7 +134,7 @@ def get_service_account_info():
                 )
 
             except Exception:
-                return None, top_level_keys, []
+                return None
 
         if (
             "private_key" in credentials_info
@@ -179,13 +148,9 @@ def get_service_account_info():
                 .replace("\\n", "\n")
             )
 
-        return (
-            credentials_info,
-            top_level_keys,
-            list(credentials_info.keys()),
-        )
+        return credentials_info
 
-    return None, top_level_keys, []
+    return None
 
 
 # =========================================================
@@ -194,11 +159,7 @@ def get_service_account_info():
 
 def get_gsheet_client():
 
-    (
-        service_account_info,
-        top_level_keys,
-        service_account_keys,
-    ) = get_service_account_info()
+    service_account_info = get_service_account_info()
 
     if not service_account_info:
 
@@ -206,9 +167,6 @@ def get_gsheet_client():
             None,
             "Google service account information "
             "is missing or malformed.",
-            top_level_keys,
-            service_account_keys,
-            [],
         )
 
     required = [
@@ -234,58 +192,46 @@ def get_gsheet_client():
 
         return (
             None,
-            "Service account secret is missing "
-            "required fields.",
-            top_level_keys,
-            service_account_keys,
-            missing_fields,
+            "Service account configuration "
+            "is incomplete.",
         )
 
     try:
 
-        credentials = (
-            Credentials.from_service_account_info(
-                service_account_info,
-                scopes=[
-                    "https://www.googleapis.com/auth/"
-                    "spreadsheets",
-                    "https://www.googleapis.com/auth/drive",
-                ],
-            )
+        credentials = Credentials.from_service_account_info(
+            service_account_info,
+            scopes=[
+                "https://www.googleapis.com/auth/spreadsheets",
+                "https://www.googleapis.com/auth/drive",
+            ],
         )
 
         client = gspread.authorize(credentials)
 
-        return (
-            client,
-            "",
-            top_level_keys,
-            service_account_keys,
-            [],
-        )
+        return client, ""
 
     except Exception as e:
+
+        logging.error(
+            "Credentials error: %s",
+            str(e),
+        )
 
         return (
             None,
             f"{type(e).__name__}: {str(e)}",
-            top_level_keys,
-            service_account_keys,
-            [],
         )
 
 
 # =========================================================
-# SAVE FEEDBACK TO GOOGLE SHEETS
+# SAVE FEEDBACK
 # =========================================================
 
 def append_feedback_to_sheet(
     input_word: str,
     predicted_stem: str,
     feedback: str,
-) -> tuple:
-
-    diagnostics = []
+):
 
     sheet_id = (
         get_setting("google_sheet_id")
@@ -298,9 +244,7 @@ def append_feedback_to_sheet(
         or "Feedback"
     )
 
-    client, client_error, _, _, _ = (
-        get_gsheet_client()
-    )
+    client, client_error = get_gsheet_client()
 
     if not client:
 
@@ -309,16 +253,13 @@ def append_feedback_to_sheet(
             client_error,
         )
 
-        return (
-            False,
-            client_error
-            or "Feedback could not be saved.",
-            diagnostics,
-        )
+        return False
 
     try:
 
-        spreadsheet = client.open_by_key(sheet_id)
+        spreadsheet = client.open_by_key(
+            sheet_id
+        )
 
         worksheet = spreadsheet.worksheet(
             sheet_name
@@ -338,24 +279,7 @@ def append_feedback_to_sheet(
             value_input_option="USER_ENTERED",
         )
 
-        logging.info(
-            "Feedback successfully appended."
-        )
-
-        return True, "", []
-
-    except gspread.WorksheetNotFound:
-
-        logging.error(
-            "Worksheet '%s' was not found.",
-            sheet_name,
-        )
-
-        return (
-            False,
-            "Feedback could not be saved.",
-            diagnostics,
-        )
+        return True
 
     except Exception:
 
@@ -364,11 +288,7 @@ def append_feedback_to_sheet(
             traceback.format_exc(),
         )
 
-        return (
-            False,
-            "Feedback could not be saved.",
-            diagnostics,
-        )
+        return False
 
 
 # =========================================================
@@ -378,31 +298,11 @@ def append_feedback_to_sheet(
 def initialize_session_state():
 
     defaults = {
-
         "input_word": "",
-
         "predicted_stem": "",
-
         "feedback_pending": False,
-
         "feedback_given": False,
-
-        "feedback_message": "",
-
-        "sheet_error": "",
-
-        # Game statistics
-        "words_tested": 0,
-
-        "correct_count": 0,
-
-        "incorrect_count": 0,
-
-        "streak": 0,
-
-        "best_streak": 0,
-
-        "points": 0,
+        "sheet_error": False,
     }
 
     for key, value in defaults.items():
@@ -412,7 +312,7 @@ def initialize_session_state():
 
 
 # =========================================================
-# FEEDBACK HANDLER
+# FEEDBACK
 # =========================================================
 
 def submit_feedback(feedback_value: str):
@@ -422,76 +322,20 @@ def submit_feedback(feedback_value: str):
         and not st.session_state.feedback_given
     ):
 
-        success, error_message, _ = (
-            append_feedback_to_sheet(
-                st.session_state.input_word,
-                st.session_state.predicted_stem,
-                feedback_value,
-            )
+        success = append_feedback_to_sheet(
+            st.session_state.input_word,
+            st.session_state.predicted_stem,
+            feedback_value,
         )
 
         if not success:
 
-            st.session_state.sheet_error = (
-                error_message
-            )
-
-            st.session_state.feedback_given = False
-
-            st.session_state.feedback_pending = True
-
+            st.session_state.sheet_error = True
             return
 
-        # Count every completed evaluation
-        st.session_state.words_tested += 1
-
-        if feedback_value == "True":
-
-            st.session_state.correct_count += 1
-
-            st.session_state.streak += 1
-
-            st.session_state.points += 10
-
-            st.session_state.best_streak = max(
-                st.session_state.best_streak,
-                st.session_state.streak,
-            )
-
-            messages = [
-                "Great! Another correct stem confirmed.",
-                "Excellent! The stemmer got that one right.",
-                "Nice! Another successful prediction.",
-                "Correct! Keep challenging the stemmer.",
-                "Perfect! That prediction passed your review.",
-            ]
-
-        else:
-
-            st.session_state.incorrect_count += 1
-
-            # Finding an error is still valuable
-            st.session_state.streak = 0
-
-            st.session_state.points += 5
-
-            messages = [
-                "Good catch! You found a stem that needs improvement.",
-                "Great contribution! You identified a difficult case.",
-                "Interesting one! This prediction needs attention.",
-                "Nice catch! Incorrect predictions are valuable too.",
-                "Great observation! You found a weakness in the rules.",
-            ]
-
-        st.session_state.feedback_message = (
-            random.choice(messages)
-        )
-
         st.session_state.feedback_given = True
-
         st.session_state.feedback_pending = False
-
-        st.session_state.sheet_error = ""
+        st.session_state.sheet_error = False
 
 
 # =========================================================
@@ -502,188 +346,111 @@ initialize_session_state()
 
 
 # =========================================================
-# CUSTOM CSS
+# SIMPLE PROFESSIONAL DESIGN
 # =========================================================
 
 st.markdown(
     """
 <style>
 
-/* Main page */
+/* Background */
 .stApp {
-    background:
-        radial-gradient(
-            circle at 10% 10%,
-            rgba(30, 120, 110, 0.15),
-            transparent 30%
-        ),
-        radial-gradient(
-            circle at 90% 20%,
-            rgba(55, 105, 180, 0.12),
-            transparent 27%
-        ),
-        #0b1220;
+    background: #0e1117;
 }
 
-/* Main width */
+
+/* Reduce overall content width */
 .block-container {
-    max-width: 920px;
-    padding-top: 2rem;
+    max-width: 720px;
+    padding-top: 3rem;
     padding-bottom: 4rem;
 }
 
-/* Hide Streamlit extras */
+
+/* Title */
+.main-title {
+    font-size: 2.7rem;
+    font-weight: 750;
+    margin-bottom: 2rem;
+    letter-spacing: -0.5px;
+}
+
+
+/* Input area */
+.input-card {
+    max-width: 620px;
+}
+
+
+/* Text input */
+.stTextInput {
+    max-width: 620px;
+}
+
+.stTextInput input {
+    min-height: 50px;
+    border-radius: 10px;
+    font-size: 1rem;
+}
+
+
+/* Main stem button */
+.stFormSubmitButton {
+    max-width: 200px;
+}
+
+.stFormSubmitButton > button {
+    min-height: 48px;
+    border-radius: 10px;
+    font-weight: 600;
+}
+
+
+/* Prediction box */
+.prediction-card {
+    margin-top: 30px;
+    padding: 24px;
+    border-radius: 14px;
+    border: 1px solid rgba(255,255,255,0.12);
+    background: rgba(255,255,255,0.035);
+}
+
+.prediction-title {
+    font-size: 0.9rem;
+    opacity: 0.65;
+    margin-bottom: 8px;
+}
+
+.predicted-stem {
+    font-size: 2rem;
+    font-weight: 700;
+}
+
+
+/* Feedback question */
+.feedback-question {
+    margin-top: 25px;
+    margin-bottom: 15px;
+    font-size: 1rem;
+    font-weight: 500;
+}
+
+
+/* Buttons */
+.stButton > button {
+    min-height: 48px;
+    border-radius: 10px;
+    font-weight: 600;
+}
+
+
+/* Remove unnecessary Streamlit elements */
 #MainMenu {
     visibility: hidden;
 }
 
 footer {
     visibility: hidden;
-}
-
-
-/* Hero */
-
-.challenge-label {
-    text-align: center;
-    text-transform: uppercase;
-    letter-spacing: 3px;
-    font-size: 0.72rem;
-    font-weight: 700;
-    opacity: 0.58;
-    margin-bottom: 8px;
-}
-
-.game-title {
-    text-align: center;
-    font-size: 3rem;
-    font-weight: 800;
-    letter-spacing: -1px;
-    margin-bottom: 4px;
-}
-
-.game-subtitle {
-    text-align: center;
-    opacity: 0.72;
-    font-size: 1.05rem;
-    margin-bottom: 2rem;
-}
-
-
-/* Statistics */
-
-.stat-card {
-    border: 1px solid rgba(255,255,255,0.09);
-    border-radius: 18px;
-    padding: 16px 8px;
-    text-align: center;
-    background: rgba(255,255,255,0.04);
-    box-shadow: 0px 8px 25px rgba(0,0,0,0.12);
-}
-
-.stat-number {
-    font-size: 1.6rem;
-    font-weight: 800;
-}
-
-.stat-label {
-    font-size: 0.70rem;
-    opacity: 0.55;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-}
-
-
-/* Instructions */
-
-.instruction-box {
-    border-radius: 18px;
-    padding: 20px 22px;
-    background: rgba(255,255,255,0.035);
-    border: 1px solid rgba(255,255,255,0.08);
-    margin-top: 15px;
-    margin-bottom: 22px;
-    line-height: 1.6;
-}
-
-
-/* Input */
-
-.stTextInput input {
-    border-radius: 14px !important;
-    min-height: 54px;
-    font-size: 1.05rem;
-}
-
-
-/* Buttons */
-
-.stButton > button,
-.stFormSubmitButton > button {
-    width: 100%;
-    min-height: 54px;
-    border-radius: 14px;
-    font-weight: 700;
-    transition: all 0.2s ease;
-}
-
-.stButton > button:hover,
-.stFormSubmitButton > button:hover {
-    transform: translateY(-2px);
-}
-
-
-/* Prediction */
-
-.prediction-card {
-    border: 1px solid rgba(255,255,255,0.10);
-    border-radius: 24px;
-    padding: 32px;
-    text-align: center;
-    margin-top: 25px;
-    margin-bottom: 25px;
-    background: rgba(255,255,255,0.045);
-    box-shadow: 0px 15px 40px rgba(0,0,0,0.20);
-}
-
-.prediction-label {
-    opacity: 0.56;
-    font-size: 0.76rem;
-    text-transform: uppercase;
-    letter-spacing: 2.5px;
-}
-
-.predicted-word {
-    font-size: 3.3rem;
-    font-weight: 850;
-    margin-top: 8px;
-    margin-bottom: 7px;
-}
-
-.original-word {
-    opacity: 0.62;
-    font-size: 0.95rem;
-}
-
-
-/* Expert judgement */
-
-.feedback-question {
-    text-align: center;
-    font-size: 1.18rem;
-    font-weight: 650;
-    margin-top: 15px;
-}
-
-
-/* Research note */
-
-.research-note {
-    text-align: center;
-    opacity: 0.48;
-    font-size: 0.80rem;
-    margin-top: 35px;
-    line-height: 1.5;
 }
 
 </style>
@@ -693,140 +460,17 @@ footer {
 
 
 # =========================================================
-# HEADER
+# TITLE
 # =========================================================
 
 st.markdown(
-    """
-<div class="challenge-label">
-    Swahili NLP Research Challenge
-</div>
-""",
-    unsafe_allow_html=True,
-)
-
-st.markdown(
-    """
-<div class="game-title">
-    🌿 Swahili Stem Challenge
-</div>
-""",
-    unsafe_allow_html=True,
-)
-
-st.markdown(
-    """
-<div class="game-subtitle">
-    Challenge the stemmer, evaluate its predictions,
-    and help improve Swahili language technology.
-</div>
-""",
+    '<div class="main-title">Swahili Verb Stemmer</div>',
     unsafe_allow_html=True,
 )
 
 
 # =========================================================
-# GAME STATISTICS
-# =========================================================
-
-col1, col2, col3, col4 = st.columns(4)
-
-with col1:
-
-    st.markdown(
-        f"""
-        <div class="stat-card">
-            <div class="stat-number">
-                {st.session_state.words_tested}
-            </div>
-            <div class="stat-label">
-                Tested
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-
-with col2:
-
-    st.markdown(
-        f"""
-        <div class="stat-card">
-            <div class="stat-number">
-                {st.session_state.points}
-            </div>
-            <div class="stat-label">
-                Points
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-
-with col3:
-
-    st.markdown(
-        f"""
-        <div class="stat-card">
-            <div class="stat-number">
-                🔥 {st.session_state.streak}
-            </div>
-            <div class="stat-label">
-                Streak
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-
-with col4:
-
-    st.markdown(
-        f"""
-        <div class="stat-card">
-            <div class="stat-number">
-                🏆 {st.session_state.best_streak}
-            </div>
-            <div class="stat-label">
-                Best
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-
-# =========================================================
-# INSTRUCTIONS
-# =========================================================
-
-st.markdown(
-    """
-<div class="instruction-box">
-
-<strong>🎯 Your mission</strong><br><br>
-
-Enter any Swahili verb you know.
-
-The rule-based algorithm will predict its stem.
-
-As a Swahili expert, judge whether the prediction is
-<strong>Correct</strong> or <strong>Incorrect</strong>.
-
-Every judgement contributes to the real-world evaluation
-of the stemmer.
-
-</div>
-""",
-    unsafe_allow_html=True,
-)
-
-
-# =========================================================
-# INPUT FORM
+# INPUT
 # =========================================================
 
 with st.form(
@@ -835,40 +479,41 @@ with st.form(
 ):
 
     input_word = st.text_input(
-        "Enter a Swahili verb",
+        "Swahili word",
         value=st.session_state.input_word,
-        placeholder="e.g. atasimama",
+        placeholder="Enter a Swahili verb",
     )
 
     stem_action = st.form_submit_button(
-        "⚡ Challenge the Stemmer",
-        use_container_width=True,
+        "Stem Word"
     )
 
     if stem_action:
 
-        input_word = input_word.strip().lower()
+        input_word = (
+            input_word
+            .strip()
+            .lower()
+        )
 
         if input_word:
 
-            st.session_state.input_word = input_word
+            st.session_state.input_word = (
+                input_word
+            )
 
             st.session_state.predicted_stem = (
                 stem(input_word)
             )
 
             st.session_state.feedback_pending = True
-
             st.session_state.feedback_given = False
-
-            st.session_state.feedback_message = ""
-
-            st.session_state.sheet_error = ""
+            st.session_state.sheet_error = False
 
         else:
 
             st.warning(
-                "Please enter a Swahili verb first."
+                "Please enter a Swahili word."
             )
 
 
@@ -882,19 +527,12 @@ if st.session_state.predicted_stem:
         f"""
         <div class="prediction-card">
 
-            <div class="prediction-label">
-                Algorithm Prediction
+            <div class="prediction-title">
+                Predicted stem
             </div>
 
-            <div class="predicted-word">
+            <div class="predicted-stem">
                 {st.session_state.predicted_stem}
-            </div>
-
-            <div class="original-word">
-                Original word:
-                <strong>
-                    {st.session_state.input_word}
-                </strong>
             </div>
 
         </div>
@@ -904,7 +542,7 @@ if st.session_state.predicted_stem:
 
 
 # =========================================================
-# EXPERT JUDGEMENT
+# TRUE / FALSE
 # =========================================================
 
 if (
@@ -916,144 +554,71 @@ if (
     st.markdown(
         """
         <div class="feedback-question">
-            🧠 Is this predicted stem correct?
+            Is this stem correct?
         </div>
         """,
         unsafe_allow_html=True,
     )
 
-    st.write("")
-
-    correct_col, incorrect_col = st.columns(
-        2,
-        gap="large",
+    col1, col2, col3 = st.columns(
+        [1, 1, 2]
     )
 
-    with correct_col:
+    with col1:
 
         if st.button(
-            "✓ Correct",
+            "True",
             key="feedback_true",
             use_container_width=True,
         ):
 
             submit_feedback("True")
-
             st.rerun()
 
 
-    with incorrect_col:
+    with col2:
 
         if st.button(
-            "✕ Incorrect",
+            "False",
             key="feedback_false",
             use_container_width=True,
         ):
 
             submit_feedback("False")
-
             st.rerun()
 
 
 # =========================================================
-# SUCCESS / GAME RESPONSE
+# AFTER FEEDBACK
 # =========================================================
 
 if st.session_state.feedback_given:
 
     st.success(
-        f"🎉 {st.session_state.feedback_message}"
+        "Thank you. Your feedback has been recorded."
     )
 
-    if st.session_state.words_tested == 1:
-
-        st.info(
-            "🌱 First judgement recorded. "
-            "Try another Swahili verb!"
-        )
-
-
-    elif st.session_state.words_tested == 5:
-
-        st.info(
-            "⭐ 5 verbs tested! "
-            "You're building useful evaluation data."
-        )
-
-
-    elif st.session_state.words_tested == 10:
-
-        st.info(
-            "🏆 10 verbs tested! "
-            "Excellent contribution."
-        )
-
-
-    elif st.session_state.words_tested == 25:
-
-        st.info(
-            "🔥 25 verbs tested! "
-            "You're seriously challenging the stemmer."
-        )
-
-
-    elif st.session_state.words_tested == 50:
-
-        st.info(
-            "🌍 50 verbs tested! "
-            "Outstanding contribution to Swahili NLP."
-        )
-
-
-    st.write("")
-
     if st.button(
-        "➡️ Test Another Verb",
-        use_container_width=True,
-        key="next_word",
+        "Test Another Verb",
+        key="test_another",
     ):
 
-        st.session_state.predicted_stem = ""
-
         st.session_state.input_word = ""
-
+        st.session_state.predicted_stem = ""
+        st.session_state.feedback_pending = False
         st.session_state.feedback_given = False
-
-        st.session_state.feedback_message = ""
-
-        st.session_state.sheet_error = ""
+        st.session_state.sheet_error = False
 
         st.rerun()
 
 
 # =========================================================
-# GOOGLE SHEETS ERROR
+# ERROR
 # =========================================================
 
 if st.session_state.sheet_error:
 
     st.error(
-        "Your feedback could not be saved. "
+        "Feedback could not be saved. "
         "Please try again."
     )
-
-
-# =========================================================
-# FOOTER
-# =========================================================
-
-st.markdown(
-    """
-<div class="research-note">
-
-Each judgement is anonymously recorded for research
-evaluation.
-
-No personal information is required.
-
-Thank you for contributing to Swahili NLP. 🌍
-
-</div>
-""",
-    unsafe_allow_html=True,
-)
