@@ -63,15 +63,35 @@ def get_service_account_info():
     if credentials_info["universe_domain"] is None:
         credentials_info["universe_domain"] = "googleapis.com"
 
-    if credentials_info["private_key"] is not None:
-        credentials_info["private_key"] = credentials_info["private_key"].replace("\\n", "\n")
+    top_level_credential_present = any(
+        get_setting(secret_name) is not None
+        for secret_name in field_mapping.values()
+    )
 
-    service_account_keys = [field for field, secret_name in field_mapping.items() if get_setting(secret_name) is not None]
+    if top_level_credential_present:
+        if credentials_info["private_key"] is not None:
+            credentials_info["private_key"] = credentials_info["private_key"].replace("\\n", "\n")
+        service_account_keys = [field for field, value in credentials_info.items() if field != "universe_domain" and value is not None]
+        return credentials_info, top_level_keys, service_account_keys
 
-    if all(credentials_info[field] is None for field in field_mapping if field != "universe_domain"):
-        return None, top_level_keys, service_account_keys
+    nested_service_account = get_setting("gcp_service_account")
+    if nested_service_account:
+        if isinstance(nested_service_account, dict):
+            credentials_info = dict(nested_service_account)
+        elif isinstance(nested_service_account, str):
+            try:
+                credentials_info = json.loads(nested_service_account)
+            except json.JSONDecodeError:
+                return None, top_level_keys, []
+        else:
+            return None, top_level_keys, []
 
-    return credentials_info, top_level_keys, service_account_keys
+        if "private_key" in credentials_info and isinstance(credentials_info["private_key"], str):
+            credentials_info["private_key"] = credentials_info["private_key"].replace("\\n", "\n")
+
+        return credentials_info, top_level_keys, list(credentials_info.keys())
+
+    return None, top_level_keys, []
 
 
 def get_gsheet_client():
@@ -119,7 +139,7 @@ def append_feedback_to_sheet(input_word: str, predicted_stem: str, feedback: str
 
     client, client_error, top_level_keys, service_account_keys, missing_fields = get_gsheet_client()
     diagnostics.append(f"st.secrets keys: {top_level_keys}")
-    diagnostics.append(f"gcp_service_account keys: {service_account_keys}")
+    diagnostics.append(f"service account credential fields: {service_account_keys}")
     if missing_fields:
         diagnostics.append(f"Missing required fields: {missing_fields}")
 
