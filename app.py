@@ -74,17 +74,18 @@ def get_service_account_info():
         service_account_keys = [field for field, value in credentials_info.items() if field != "universe_domain" and value is not None]
         return credentials_info, top_level_keys, service_account_keys
 
-    nested_service_account = get_setting("gcp_service_account")
-    if nested_service_account:
-        if isinstance(nested_service_account, dict):
-            credentials_info = dict(nested_service_account)
-        elif isinstance(nested_service_account, str):
+    if hasattr(st, "secrets") and "gcp_service_account" in st.secrets:
+        nested_service_account = st.secrets["gcp_service_account"]
+        if isinstance(nested_service_account, str):
             try:
                 credentials_info = json.loads(nested_service_account)
             except json.JSONDecodeError:
                 return None, top_level_keys, []
         else:
-            return None, top_level_keys, []
+            try:
+                credentials_info = dict(nested_service_account)
+            except Exception:
+                return None, top_level_keys, []
 
         if "private_key" in credentials_info and isinstance(credentials_info["private_key"], str):
             credentials_info["private_key"] = credentials_info["private_key"].replace("\\n", "\n")
