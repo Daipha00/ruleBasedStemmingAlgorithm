@@ -35,7 +35,6 @@ def get_setting(key: str, default=None):
 
 
 def get_service_account_info():
-    service_account_info = get_setting("gcp_service_account")
     top_level_keys = []
     if hasattr(st, "secrets"):
         try:
@@ -43,23 +42,36 @@ def get_service_account_info():
         except Exception:
             top_level_keys = []
 
-    if not service_account_info:
-        return None, top_level_keys, []
+    field_mapping = {
+        "type": "gcp_type",
+        "project_id": "gcp_project_id",
+        "private_key_id": "gcp_private_key_id",
+        "private_key": "gcp_private_key",
+        "client_email": "gcp_client_email",
+        "client_id": "gcp_client_id",
+        "auth_uri": "gcp_auth_uri",
+        "token_uri": "gcp_token_uri",
+        "auth_provider_x509_cert_url": "gcp_auth_provider_x509_cert_url",
+        "client_x509_cert_url": "gcp_client_x509_cert_url",
+        "universe_domain": "gcp_universe_domain",
+    }
 
-    if isinstance(service_account_info, dict):
-        credentials_info = dict(service_account_info)
-    elif isinstance(service_account_info, str):
-        try:
-            credentials_info = json.loads(service_account_info)
-        except json.JSONDecodeError:
-            return None, top_level_keys, []
-    else:
-        return None, top_level_keys, []
+    credentials_info = {
+        field: get_setting(secret_name)
+        for field, secret_name in field_mapping.items()
+    }
+    if credentials_info["universe_domain"] is None:
+        credentials_info["universe_domain"] = "googleapis.com"
 
-    if "private_key" in credentials_info and isinstance(credentials_info["private_key"], str):
+    if credentials_info["private_key"] is not None:
         credentials_info["private_key"] = credentials_info["private_key"].replace("\\n", "\n")
 
-    return credentials_info, top_level_keys, list(credentials_info.keys())
+    service_account_keys = [field for field, secret_name in field_mapping.items() if get_setting(secret_name) is not None]
+
+    if all(credentials_info[field] is None for field in field_mapping if field != "universe_domain"):
+        return None, top_level_keys, service_account_keys
+
+    return credentials_info, top_level_keys, service_account_keys
 
 
 def get_gsheet_client():
@@ -79,9 +91,9 @@ def get_gsheet_client():
         "auth_provider_x509_cert_url",
         "client_x509_cert_url",
     ]
-    missing_fields = [field for field in required if field not in service_account_info]
+    missing_fields = [field for field in required if not service_account_info.get(field)]
     if missing_fields:
-        return None, "Service account secret is missing required fields.", service_account_keys, missing_fields
+        return None, "Service account secret is missing required fields.", top_level_keys, service_account_keys, missing_fields
 
     try:
         credentials = Credentials.from_service_account_info(
@@ -92,9 +104,9 @@ def get_gsheet_client():
             ],
         )
         client = gspread.authorize(credentials)
-        return client, "", service_account_keys, []
+        return client, "", top_level_keys, service_account_keys, []
     except Exception as e:
-        return None, f"{type(e).__name__}: {str(e)}", service_account_keys, []
+        return None, f"{type(e).__name__}: {str(e)}", top_level_keys, service_account_keys, []
 
 
 def append_feedback_to_sheet(input_word: str, predicted_stem: str, feedback: str) -> tuple:
