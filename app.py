@@ -205,19 +205,7 @@ def submit_feedback(feedback_value: str) -> None:
             st.session_state.feedback_pending = True
             return
 
-        messages = {
-            "True": [
-                "Great job! That one was spot on. Ready for the next verb?",
-                "Nice! You have a sharp stemmer eye. Let's keep going!",
-                "Correct! Can you beat your streak with the next word?",
-            ],
-            "False": [
-                "Good catch! Your feedback helps the stemmer get better.",
-                "Nice work! The next verb is a new chance to win.",
-                "Thanks! The stemmer learned something from that one.",
-            ],
-        }
-        st.session_state.feedback_message = random.choice(messages.get(feedback_value, ["Nice! Try another word."]))
+        st.session_state.feedback_message = "Thanks for your response."
         st.session_state.feedback_given = True
         st.session_state.feedback_pending = False
         st.session_state.sheet_error = ""
@@ -255,17 +243,14 @@ if st.session_state.predicted_stem:
         if col2.button("False", key="feedback_false"):
             submit_feedback("False")
 
-        if st.session_state.feedback_given:
-            if st.session_state.feedback_message:
-                st.info(st.session_state.feedback_message)
-            st.balloons()
-            st.success("Thank you. Your feedback has been recorded.")
-            st.write("The word field has been cleared. Enter another verb to continue the game!")
+    if st.session_state.feedback_given:
+        st.info("Thanks for your response.")
+        st.balloons()
 
-        if st.session_state.sheet_diagnostics:
-            st.markdown("**Google Sheets diagnostics**")
-            for line in st.session_state.sheet_diagnostics:
-                st.text(line)
+    if st.session_state.sheet_diagnostics:
+        st.markdown("**Google Sheets diagnostics**")
+        for line in st.session_state.sheet_diagnostics:
+            st.text(line)
 
-        if st.session_state.sheet_error:
-            st.error(st.session_state.sheet_error)
+    if st.session_state.sheet_error:
+        st.error(st.session_state.sheet_error)
