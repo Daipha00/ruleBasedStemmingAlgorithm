@@ -408,10 +408,22 @@ st.markdown(
 /* Counter */
 [data-testid="stMetric"] {
     background-color: #ffffff;
-    border: 1px solid rgba(0,0,0,0.08);
+    border: 1px solid rgba(0,0,0,0.12);
     color: #111111;
-    padding: 12px 18px;
-    border-radius: 12px;
+    padding: 18px 22px;
+    border-radius: 18px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.06);
+    min-width: 220px;
+}
+
+[data-testid="stMetric"] .stMetric {
+    color: #111111;
+}
+
+[data-testid="stMetric"] .stMetricValue {
+    color: #111111;
+    font-size: 2.8rem;
+    font-weight: 700;
 }
 
 /* Input and form backgrounds */
