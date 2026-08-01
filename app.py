@@ -356,7 +356,12 @@ st.markdown(
 <style>
 
 .stApp {
-    background-color: #0e1117;
+    background-color: #f4f7fb;
+    color: #111111;
+}
+
+.stApp, .stApp * {
+    color: #111111;
 }
 
 /* Keep page narrower */
@@ -386,10 +391,20 @@ st.markdown(
 
 /* Counter */
 [data-testid="stMetric"] {
-    background-color: rgba(255,255,255,0.04);
-    border: 1px solid rgba(255,255,255,0.10);
+    background-color: rgba(0,0,0,0.04);
+    border: 1px solid rgba(0,0,0,0.10);
     padding: 12px 18px;
     border-radius: 12px;
+}
+
+/* Input and form backgrounds */
+[data-testid="stTextInput"] input,
+.stTextInput>div>div>input,
+.stTextInput>div>div>textarea,
+.stForm>div>div>input,
+.stForm>div>div>textarea {
+    background-color: #ffffff;
+    color: #111111;
 }
 
 /* Remove default menu/footer */
