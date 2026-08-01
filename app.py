@@ -386,13 +386,30 @@ st.markdown(
 .stFormSubmitButton > button {
     border-radius: 10px;
     min-height: 46px;
-    font-weight: 600;
+    font-weight: 700;
+    background-color: #0c6efd;
+    color: #ffffff;
+    border: 1px solid rgba(12, 110, 253, 0.9);
+    box-shadow: 0 6px 18px rgba(12, 110, 253, 0.18);
+}
+
+.stButton > button:hover,
+.stFormSubmitButton > button:hover {
+    background-color: #095cd7;
+    border-color: rgba(9, 92, 215, 0.9);
+}
+
+.stButton > button:focus-visible,
+.stFormSubmitButton > button:focus-visible {
+    outline: 3px solid rgba(12, 110, 253, 0.35);
+    outline-offset: 2px;
 }
 
 /* Counter */
 [data-testid="stMetric"] {
-    background-color: rgba(0,0,0,0.04);
-    border: 1px solid rgba(0,0,0,0.10);
+    background-color: #ffffff;
+    border: 1px solid rgba(0,0,0,0.08);
+    color: #111111;
     padding: 12px 18px;
     border-radius: 12px;
 }
