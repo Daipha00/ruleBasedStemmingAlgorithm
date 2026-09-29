@@ -4,10 +4,6 @@ from pathlib import Path
 from stemmer import stem
 
 
-# ============================================================
-# PATHS
-# ============================================================
-
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 DATA_FILE = BASE_DIR / "data" / "Testing_A_Flattenned.csv"
@@ -17,9 +13,7 @@ RESULTS_FILE = RESULTS_DIR / "rule_based_test_results.csv"
 ERRORS_FILE = RESULTS_DIR / "rule_based_test_errors.csv"
 
 
-# ============================================================
-# LOAD DATASET
-# ============================================================
+
 
 print("Loading dataset...")
 
@@ -30,7 +24,7 @@ if not DATA_FILE.exists():
 
 df = pd.read_csv(DATA_FILE)
 
-# Clean column names
+
 df.columns = (
     df.columns
     .astype(str)
@@ -46,7 +40,7 @@ if not required_columns.issubset(df.columns):
         f"Available columns: {list(df.columns)}"
     )
 
-# Keep only word and stem
+
 df = df[["word", "stem"]].copy()
 
 original_total = len(df)
@@ -54,11 +48,6 @@ original_total = len(df)
 print(f"Original number of pairs: {original_total:,}")
 
 
-# ============================================================
-# CLEAN DATA
-# ============================================================
-
-# Remove rows only when word or stem is missing
 df = df.dropna(
     subset=["word", "stem"]
 ).copy()
@@ -77,7 +66,7 @@ df["stem"] = (
     .str.strip()
 )
 
-# Remove rows only when word or stem is empty
+
 df = df[
     (df["word"] != "")
     & (df["stem"] != "")
@@ -93,9 +82,7 @@ print(f"Unique words: {df['word'].nunique():,}")
 print(f"Unique stems: {df['stem'].nunique():,}")
 
 
-# ============================================================
-# DATA QUALITY INFORMATION
-# ============================================================
+
 
 duplicate_pairs = int(
     df.duplicated(
@@ -116,9 +103,6 @@ print(f"Repeated word-stem pairs kept: {duplicate_pairs:,}")
 print(f"Words linked to more than one stem kept: {len(conflicting_words):,}")
 
 
-# ============================================================
-# RUN RULE-BASED STEMMER
-# ============================================================
 
 print("\nRunning rule-based stemmer...")
 
@@ -132,9 +116,6 @@ df["predicted"] = (
 )
 
 
-# ============================================================
-# COMPARE RESULTS
-# ============================================================
 
 df["correct"] = (
     df["predicted"] == df["stem"]
@@ -151,18 +132,16 @@ accuracy = (
 )
 
 
-# ============================================================
+
 # CREATE ERROR DATASET
-# ============================================================
 
 errors = df[
     df["correct"] == False
 ].copy()
 
 
-# ============================================================
+
 # SAVE RESULTS
-# ============================================================
 
 RESULTS_DIR.mkdir(
     parents=True,
@@ -186,11 +165,8 @@ errors[
 )
 
 
-# ============================================================
-# DISPLAY RESULTS
-# ============================================================
 
-print("\n========== RULE-BASED STEMMER EVALUATION ==========")
+print("\nRULE-BASED STEMMER EVALUATION")
 
 print(f"Total words tested: {total:,}")
 print(f"Correct predictions: {correct_predictions:,}")
@@ -198,11 +174,10 @@ print(f"Incorrect predictions: {incorrect_predictions:,}")
 print(f"Accuracy: {accuracy:.2f}%")
 
 
-# ============================================================
-# SAMPLE ERRORS
-# ============================================================
 
-print("\n========== SAMPLE ERRORS ==========")
+# SAMPLE ERRORS
+
+print("\nSAMPLE ERRORS")
 
 if errors.empty:
     print("No errors found.")
@@ -214,22 +189,18 @@ else:
     )
 
 
-# ============================================================
+
 # VERIFY SAVED FILES
-# ============================================================
 
 saved_results = pd.read_csv(RESULTS_FILE)
 saved_errors = pd.read_csv(ERRORS_FILE)
 
-print("\n========== SAVED FILE CHECK ==========")
+print("\nSAVED FILE CHECK")
 
 print(f"Rows saved in results file: {len(saved_results):,}")
 print(f"Rows saved in errors file: {len(saved_errors):,}")
 
-
-# ============================================================
 # FINAL FILE LOCATIONS
-# ============================================================
 
 print("\nResults saved successfully:")
 

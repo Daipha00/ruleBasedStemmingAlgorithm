@@ -17,14 +17,6 @@ def safe_sub(pattern, repl, word, min_len=3):
     return word
 
 
-# ============================================================
-# MAIN STEMMER
-# ============================================================
-
-# ============================================================
-# MAIN STEMMER
-# ============================================================
-
 def stem(word):
 
     if not isinstance(word, str):
@@ -81,11 +73,6 @@ def stem(word):
 
     return word
 
-
-# ============================================================
-# STEMMER WITH TRACE
-# ============================================================
-
 def stem_with_trace(word):
 
     if not isinstance(word, str):
@@ -132,13 +119,10 @@ def stem_with_trace(word):
     else:
         final_word = strip_final_vowel(word)
 
-    trace["final"] = final_word
     return trace
 
 
-# ============================================================
-# COMPOUND PREFIXES
-# ============================================================
+
 
 def strip_compound_prefixes(word):
 
@@ -225,16 +209,7 @@ def strip_compound_prefixes(word):
     return word
 
 
-# ============================================================
-# SIMPLE PREFIXES
-# ============================================================
-
 def strip_simple_prefixes(word):
-
-    # Protect lexical words whose beginnings resemble full
-    # subject/tense prefixes.
-    if word.startswith(("itabir", "hudum")):
-        return word
 
     patterns = [
         r'^(nina|nime|nita)',
@@ -247,7 +222,6 @@ def strip_simple_prefixes(word):
         r'^(uli|ali)',
         r'^hu',
 
-        # ku is stripped only before a vowel.
         r'^ku(?=[aeiou])',
 
         r'^lili',
@@ -255,7 +229,6 @@ def strip_simple_prefixes(word):
         r'^(zina|zita|zili|zime|zinge)',
         r'^(yana|yata|yali|yame|yange)',
 
-        # Short subject markers are removed only before a vowel.
         r'^(ni|tu|wa|mu)(?=[aeiou])',
     ]
 
@@ -264,10 +237,6 @@ def strip_simple_prefixes(word):
 
     return word
 
-
-# ============================================================
-# TENSE MARKERS
-# ============================================================
 
 def strip_tense_markers(word):
 
@@ -285,9 +254,7 @@ def strip_tense_markers(word):
     if len(temp) >= 3:
         word = temp
 
-    # These markers are stripped only before a vowel. This avoids
-    # cutting lexical beginnings such as ja-, yo-, ye- and ka-
-    # when they are followed by a consonant.
+   
     word = safe_sub(r'^ja(?=[aeiou])', '', word)
     word = safe_sub(r'^yo(?=[aeiou])', '', word)
     word = safe_sub(r'^ye(?=[aeiou])', '', word)
@@ -302,24 +269,8 @@ def strip_tense_markers(word):
     return word
 
 
-# ============================================================
-# OBJECT MARKERS
-# ============================================================
 
 def strip_object_markers(word):
-
-    # In kiuka, ki belongs to the lexical form.
-    if word.startswith("kiuka"):
-        return word
-
-    # Reflexive ji- before this consonant pattern is removed.
-    if word.startswith("jikoko"):
-        result = word[2:]
-
-        if len(result) >= 3:
-            return result
-
-    # ji- is treated as a marker only before a vowel.
     word = safe_sub(
         r'^ji(?=[aeiou])',
         '',
@@ -335,204 +286,41 @@ def strip_object_markers(word):
     return word
 
 
-# ============================================================
-# DERIVATIONAL SUFFIXES
-# ============================================================
 
 def strip_derivational_suffixes(word):
-
-    # Narrow rules derived from repeated morphological patterns.
-    if word.endswith(("hirika", "mirika")):
-        result = word[:-2]
-        if len(result) >= 3:
-            return result
-
-    if word.endswith("chilia"):
-        result = word[:-4]
-        if len(result) >= 3:
-            return result
-
-    if word.endswith(("nzia", "hia", "hamia", "gumia", "salia")):
-        result = word[:-2]
-        if len(result) >= 2:
-            return result
-
-    if word.endswith("agaza"):
-        result = word[:-3]
-        if len(result) >= 3:
-            return result
-
-    if word.endswith("nanisha"):
-        result = word[:-4]
-        if len(result) >= 3:
-            return result
-
-    if word.endswith("jibu"):
-        result = word[:-1]
-        if len(result) >= 3:
-            return result
-
-    if word.endswith("gizia"):
-        result = re.sub(r"ngizia$", "ndikiz", word)
-        if result != word:
-            return result
-
-    if word.endswith("nana"):
-        result = word[:-3]
-        if len(result) >= 2:
-            return result
-
-
-    # Passive form -uliwa
-    if word.endswith("uliwa"):
-        result = word[:-2]
-
-        if len(result) >= 3:
-            return result
-
-    # Passive suffix -wa
-    if (
-        len(word) > 4
-        and re.search(r"[^aeio]wa$", word)
-    ):
-        result = re.sub(r"wa$", "", word)
-
-        if len(result) >= 3:
-            return result
-
-    # Root + mkia
-    if word.endswith("mkia"):
-        result = word[:-3]
-
-        if len(result) >= 3:
-            return result
-
-    # Root + ulia
-    if word.endswith("ulia"):
-        result = word[:-3]
-
-        if len(result) >= 3:
-            return result
-
-    # Root + ukiza
-    if word.endswith("ukiza"):
-        result = word[:-2]
-
-        if len(result) >= 3:
-            return result
-
-    # Root + ofisha
-    if word.endswith("ofisha"):
-        result = word[:-4]
-
-        if len(result) >= 3:
-            return result
-
-    # Root ending in vowel + isha
-    if word.endswith("aisha"):
-        result = word[:-3]
-
-        if len(result) >= 3:
-            return result
-
-    # Reciprocal forms
-    if word.endswith("jana"):
-        result = word[:-3]
-
-        if len(result) >= 2:
-            return result
-
-    if word.endswith("tana"):
-        result = word[:-3]
-
-        if len(result) >= 2:
-            return result
-
-    # Stative forms
-    if word.endswith("fuka"):
-        result = word[:-2]
-
-        if len(result) >= 3:
-            return result
-
-    if word.endswith("aika"):
-        result = word[:-2]
-
-        if len(result) >= 3:
-            return result
-
-    # Reciprocal-applicative form -iana
-    if word.endswith("iana"):
-        result = word[:-4]
-
-        if len(result) >= 3:
-            return result
-
-    # Narrow causative patterns
-    if word.endswith("msha"):
-        result = word[:-3]
-
-        if len(result) >= 3:
-            return result
-
-    if word.endswith("vusha"):
-        result = word[:-3]
-
-        if len(result) >= 3:
-            return result
-
-    if word.endswith("mbeza"):
-        result = word[:-3]
-
-        if len(result) >= 3:
-            return result
-
-    # Applicative extension -ilia
-    if (
-        len(word) > 6
-        and word.endswith("ilia")
-    ):
-        result = word[:-4]
-
-        if len(result) >= 4:
-            return result
-
-    # Applicative ending -ia
+  
     if word.endswith("ia"):
         result = word[:-1]
 
         if len(result) >= 3:
             return result
 
-    # Applicative ending -ea
+  
     if word.endswith("ea"):
         result = word[:-1]
 
         if len(result) >= 3:
             return result
 
-    # Preserve -ik and remove final a only.
     if word.endswith("ika"):
         result = word[:-1]
 
         if len(result) >= 3:
             return result
 
-    # Preserve -ek and remove final a only.
+    
     if word.endswith("eka"):
         result = word[:-1]
 
         if len(result) >= 3:
             return result
 
-    # Preserve -ish/-esh and remove final a only.
     if word.endswith(("isha", "esha")):
         result = word[:-1]
 
         if len(result) >= 3:
             return result
 
-    # Preserve -an and remove final a only.
     if word.endswith("ana"):
         result = word[:-1]
 
@@ -542,27 +330,16 @@ def strip_derivational_suffixes(word):
     return word
 
 
-# ============================================================
-# FINAL VOWEL
-# ============================================================
 
 def strip_final_vowel(word):
 
     if len(word) <= 2:
         return word
 
-    # Narrow final-vowel rules supported by recurring patterns.
-    if word.endswith(("lisi", "kari", "riri", "nuku", "hui")):
-        result = word[:-1]
-
-        if len(result) >= 2:
-            return result
-
-    # Preserve other words ending with e, i, o or u.
     if word.endswith(("e", "i", "o", "u")):
         return word
 
-    # Preserve lexical forms ending in -aana.
+  
     if word.endswith("aana"):
         return word
 
