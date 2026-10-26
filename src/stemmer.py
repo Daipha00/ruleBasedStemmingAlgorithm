@@ -30,6 +30,10 @@ def stem(word):
     original = word.split()[0]
     word = original
 
+  
+    if word.endswith(("i", "o", "u")):
+        return word
+
     debug_print("original", word)
 
     word = strip_compound_prefixes(word)
@@ -73,6 +77,7 @@ def stem(word):
 
     return word
 
+
 def stem_with_trace(word):
 
     if not isinstance(word, str):
@@ -85,6 +90,16 @@ def stem_with_trace(word):
 
     word = word.split()[0]
     trace = {"original": word}
+
+    # ---------------------------------------------------------
+    # NON-BANTU WORD PRESERVATION RULE
+    # ---------------------------------------------------------
+    # Words ending in i, o, or u are treated as non-Bantu-origin
+    # words and are preserved without morphological stripping.
+    # ---------------------------------------------------------
+    if word.endswith(("i", "o", "u")):
+        trace["non_bantu_word"] = word
+        return trace
 
     word = strip_compound_prefixes(word)
     trace["compound_prefixes"] = word
@@ -120,8 +135,6 @@ def stem_with_trace(word):
         final_word = strip_final_vowel(word)
 
     return trace
-
-
 
 
 def strip_compound_prefixes(word):
@@ -254,7 +267,6 @@ def strip_tense_markers(word):
     if len(temp) >= 3:
         word = temp
 
-   
     word = safe_sub(r'^ja(?=[aeiou])', '', word)
     word = safe_sub(r'^yo(?=[aeiou])', '', word)
     word = safe_sub(r'^ye(?=[aeiou])', '', word)
@@ -267,7 +279,6 @@ def strip_tense_markers(word):
     word = safe_sub(r'^ka(?=[aeiou].{2,})', '', word)
 
     return word
-
 
 
 def strip_object_markers(word):
@@ -286,16 +297,14 @@ def strip_object_markers(word):
     return word
 
 
-
 def strip_derivational_suffixes(word):
-  
+
     if word.endswith("ia"):
         result = word[:-1]
 
         if len(result) >= 3:
             return result
 
-  
     if word.endswith("ea"):
         result = word[:-1]
 
@@ -308,7 +317,6 @@ def strip_derivational_suffixes(word):
         if len(result) >= 3:
             return result
 
-    
     if word.endswith("eka"):
         result = word[:-1]
 
@@ -330,7 +338,6 @@ def strip_derivational_suffixes(word):
     return word
 
 
-
 def strip_final_vowel(word):
 
     if len(word) <= 2:
@@ -339,7 +346,6 @@ def strip_final_vowel(word):
     if word.endswith(("e", "i", "o", "u")):
         return word
 
-  
     if word.endswith("aana"):
         return word
 
@@ -351,4 +357,3 @@ def strip_final_vowel(word):
             return result
 
     return word
-
