@@ -1,208 +1,74 @@
-import pandas as pd
+import argparse
 from pathlib import Path
 
-from stemmer import stem
+import pandas as pd
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-
-DATA_FILE = BASE_DIR / "data" / "Testing_A_Flattenned.csv"
+DATA_FILE = BASE_DIR / "data" / "Testing_A_Cleaned.csv"
 RESULTS_DIR = BASE_DIR / "results"
-
-RESULTS_FILE = RESULTS_DIR / "rule_based_test_results.csv"
-ERRORS_FILE = RESULTS_DIR / "rule_based_test_errors.csv"
-
+RESULTS_FILE = RESULTS_DIR / "rule_based_cleaned_test_results.csv"
+ERRORS_FILE = RESULTS_DIR / "rule_based_cleaned_test_errors.csv"
 
 
+def load_dataset():
+    if not DATA_FILE.is_file():
+        raise SystemExit(f"Dataset not found: {DATA_FILE}")
 
-print("Loading dataset...")
+    pairs = pd.read_csv(DATA_FILE, dtype=str, keep_default_na=False)
+    pairs.columns = pairs.columns.str.strip().str.lower()
 
-if not DATA_FILE.exists():
-    raise FileNotFoundError(
-        f"Dataset not found:\n{DATA_FILE}"
+    if not {"word", "stem"}.issubset(pairs.columns):
+        raise SystemExit("The cleaned dataset must contain 'word' and 'stem' columns.")
+
+    return pairs[["word", "stem"]].copy()
+
+
+def evaluate(pairs):
+    from stemmer import stem
+
+    if pairs.empty:
+        raise SystemExit("The cleaned dataset has no pairs to evaluate.")
+
+    if pairs.apply(lambda column: column.str.strip().eq("")).any().any():
+        raise SystemExit("The cleaned dataset contains an empty word or stem.")
+
+    if pairs.duplicated(subset=["word", "stem"]).any():
+        raise SystemExit("The cleaned dataset contains repeated word–stem pairs.")
+
+    pairs["predicted"] = pairs["word"].map(stem)
+    pairs["correct"] = pairs["predicted"].eq(pairs["stem"])
+    errors = pairs.loc[~pairs["correct"]]
+
+    RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+    pairs.to_csv(RESULTS_FILE, index=False, encoding="utf-8-sig")
+    errors.to_csv(ERRORS_FILE, index=False, encoding="utf-8-sig")
+
+    correct = int(pairs["correct"].sum())
+    print(f"Correct predictions: {correct:,}")
+    print(f"Incorrect predictions: {len(errors):,}")
+    print(f"Exact-match accuracy: {correct / len(pairs):.2%}")
+    print(f"All predictions: {RESULTS_FILE}")
+    print(f"Incorrect predictions: {ERRORS_FILE}")
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Count the cleaned test pairs or run the rule-based experiment."
     )
-
-df = pd.read_csv(DATA_FILE)
-
-
-df.columns = (
-    df.columns
-    .astype(str)
-    .str.strip()
-    .str.lower()
-)
-
-required_columns = {"word", "stem"}
-
-if not required_columns.issubset(df.columns):
-    raise ValueError(
-        "The dataset must contain the columns 'word' and 'stem'.\n"
-        f"Available columns: {list(df.columns)}"
+    parser.add_argument(
+        "--run",
+        action="store_true",
+        help="Run the stemmer and save predictions. The default only prints the count.",
     )
+    args = parser.parse_args()
+
+    pairs = load_dataset()
+    print(f"Word–stem pairs in Testing_A_Cleaned.csv: {len(pairs):,}")
+
+    if args.run:
+        evaluate(pairs)
 
 
-df = df[["word", "stem"]].copy()
-
-original_total = len(df)
-
-print(f"Original number of pairs: {original_total:,}")
-
-
-df = df.dropna(
-    subset=["word", "stem"]
-).copy()
-
-df["word"] = (
-    df["word"]
-    .astype(str)
-    .str.lower()
-    .str.strip()
-)
-
-df["stem"] = (
-    df["stem"]
-    .astype(str)
-    .str.lower()
-    .str.strip()
-)
-
-
-df = df[
-    (df["word"] != "")
-    & (df["stem"] != "")
-].copy()
-
-df = df.reset_index(drop=True)
-
-removed_rows = original_total - len(df)
-
-print(f"Rows removed because of missing or empty values: {removed_rows:,}")
-print(f"Total words for evaluation: {len(df):,}")
-print(f"Unique words: {df['word'].nunique():,}")
-print(f"Unique stems: {df['stem'].nunique():,}")
-
-
-
-
-duplicate_pairs = int(
-    df.duplicated(
-        subset=["word", "stem"]
-    ).sum()
-)
-
-stem_counts = (
-    df.groupby("word")["stem"]
-    .nunique()
-)
-
-conflicting_words = stem_counts[
-    stem_counts > 1
-]
-
-print(f"Repeated word-stem pairs kept: {duplicate_pairs:,}")
-print(f"Words linked to more than one stem kept: {len(conflicting_words):,}")
-
-
-
-print("\nRunning rule-based stemmer...")
-
-df["predicted"] = df["word"].apply(stem)
-
-df["predicted"] = (
-    df["predicted"]
-    .astype(str)
-    .str.lower()
-    .str.strip()
-)
-
-
-
-df["correct"] = (
-    df["predicted"] == df["stem"]
-)
-
-total = len(df)
-correct_predictions = int(df["correct"].sum())
-incorrect_predictions = total - correct_predictions
-
-accuracy = (
-    correct_predictions / total * 100
-    if total > 0
-    else 0.0
-)
-
-
-
-# CREATE ERROR DATASET
-
-errors = df[
-    df["correct"] == False
-].copy()
-
-
-
-# SAVE RESULTS
-
-RESULTS_DIR.mkdir(
-    parents=True,
-    exist_ok=True
-)
-
-# Save every evaluated row
-df[
-    ["word", "stem", "predicted", "correct"]
-].to_csv(
-    RESULTS_FILE,
-    index=False
-)
-
-# Save every incorrect row
-errors[
-    ["word", "stem", "predicted", "correct"]
-].to_csv(
-    ERRORS_FILE,
-    index=False
-)
-
-
-
-print("\nRULE-BASED STEMMER EVALUATION")
-
-print(f"Total words tested: {total:,}")
-print(f"Correct predictions: {correct_predictions:,}")
-print(f"Incorrect predictions: {incorrect_predictions:,}")
-print(f"Accuracy: {accuracy:.2f}%")
-
-
-
-# SAMPLE ERRORS
-
-print("\nSAMPLE ERRORS")
-
-if errors.empty:
-    print("No errors found.")
-else:
-    print(
-        errors[
-            ["word", "stem", "predicted"]
-        ].head(30).to_string(index=False)
-    )
-
-
-
-# VERIFY SAVED FILES
-
-saved_results = pd.read_csv(RESULTS_FILE)
-saved_errors = pd.read_csv(ERRORS_FILE)
-
-print("\nSAVED FILE CHECK")
-
-print(f"Rows saved in results file: {len(saved_results):,}")
-print(f"Rows saved in errors file: {len(saved_errors):,}")
-
-# FINAL FILE LOCATIONS
-
-print("\nResults saved successfully:")
-
-print(f"1. All evaluated words:\n   {RESULTS_FILE}")
-print(f"2. All incorrect predictions:\n   {ERRORS_FILE}")
+if __name__ == "__main__":
+    main()

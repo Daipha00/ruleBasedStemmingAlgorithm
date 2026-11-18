@@ -1,36 +1,6 @@
 import pandas as pd
 from pathlib import Path
 
-
-# ============================================================
-# FLATTEN SWAHILI VERB DATASET
-# ============================================================
-# This script converts a wide dataset such as:
-#
-# stem | form_1 | form_2 | form_3 | ...
-# buka | anabuka | amebuka | atabuka | ...
-#
-# into:
-#
-# word      | stem
-# anabuka   | buka
-# amebuka   | buka
-# atabuka   | buka
-#
-# IMPORTANT:
-# ALL word-form cells are retained.
-# Repeated words/forms are NOT removed.
-#
-# Every occurrence is treated as a separate word-stem pair.
-# This is intentional because the evaluation dataset should
-# contain every form present in the original dataset.
-# ============================================================
-
-
-# ============================================================
-# PATHS
-# ============================================================
-
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 DATA_DIR = BASE_DIR / "data"
